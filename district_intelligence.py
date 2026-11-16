@@ -255,4 +255,17 @@ def match_assistance_programs(
                 "Eligibility": "Not determined - individual screening required"
             })
 
-    return pd.DataFrame(matches)
+    columns = [
+        district_label,
+        "Community Need",
+        "Priority",
+        "Program",
+        "Agency",
+        "Description",
+        "Official Website",
+        "Why Relevant",
+        "Screening Guidance",
+        "Eligibility",
+    ]
+
+    return pd.DataFrame(matches, columns=columns)

@@ -967,6 +967,59 @@ with st.expander("Comparison source and limitations"):
     st.write(comparison_result["source"])
     st.write(comparison_result["limitations"])
 
+# PHASE_14_SOURCE_VERIFICATION_DASHBOARD
+with st.expander("Data Sources and Verification"):
+    from source_verification import inspect_sources
+
+    verification_records = inspect_sources()
+    verification_frame = pd.DataFrame(verification_records)
+
+    verified_count = sum(
+        record["Status"] == "PASS"
+        for record in verification_records
+    )
+
+    st.metric(
+        "Local Dataset Structure Checks",
+        f"{verified_count}/{len(verification_records)}"
+    )
+
+    st.dataframe(
+        verification_frame,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.download_button(
+        "Download Source Verification Inventory",
+        data=verification_frame.to_csv(index=False).encode("utf-8"),
+        file_name="deep_bet_source_verification.csv",
+        mime="text/csv",
+        key="download_source_verification",
+    )
+
+    if verified_count != len(verification_records):
+        st.error(
+            "One or more local datasets failed structural validation."
+        )
+
+    st.caption(
+        "Structural checks confirm local file readability, expected "
+        "geographic coverage, and the presence of ACS estimate and "
+        "margin-of-error fields. They do not independently authenticate "
+        "the data or reconcile figures with original Census releases."
+    )
+
+    st.info(
+        "Official ACS district and statewide estimates are distinct "
+        "from prototype district summaries based on unweighted medians "
+        "of overlapping census tracts. ACS estimates have sampling "
+        "uncertainty. Differences have not been tested for statistical "
+        "significance. Assistance-program matches do not determine "
+        "individual eligibility."
+    )
+
+
 st.header("District Intelligence Report")
 
 intelligence_crosswalk = pd.read_csv(
@@ -1003,6 +1056,43 @@ intelligence_programs = match_assistance_programs(
     intelligence_priorities,
     chamber=chamber
 )
+
+# PHASE_14_PROGRAM_SCHEMA_GUARD
+required_program_columns = [
+    district_label,
+    "Community Need",
+    "Priority",
+    "Program",
+    "Agency",
+    "Description",
+    "Official Website",
+    "Why Relevant",
+    "Screening Guidance",
+    "Eligibility",
+]
+
+missing_program_columns = [
+    column for column in required_program_columns
+    if column not in intelligence_programs.columns
+]
+
+if missing_program_columns:
+    st.warning(
+        "Assistance-program schema mismatch detected. "
+        "Missing columns: " + ", ".join(missing_program_columns)
+    )
+
+    # Rebuild using the current matching function before display.
+    intelligence_programs = match_assistance_programs(
+        intelligence_priorities,
+        chamber=chamber,
+    )
+
+    for column in required_program_columns:
+        if column not in intelligence_programs.columns:
+            intelligence_programs[column] = ""
+
+
 
 report_district = st.selectbox(
     "Select " + district_label + " for Intelligence Report",
