@@ -241,6 +241,17 @@ def match_assistance_programs(
                 "Agency": program["agency"],
                 "Description": program["description"],
                 "Official Website": program["website"],
+                "Why Relevant": (
+                    f"{program['name']} addresses the "
+                    f"{finding['Community Need']} category. "
+                    f"The district has a community priority of {priority.lower()} "
+                    "under the prototype tract-based screening method. "
+                    "This does not establish individual eligibility."
+                ),
+                "Screening Guidance": (
+                    "Confirm current eligibility, application instructions "
+                    "and availability with the administering agency."
+                ),
                 "Eligibility": "Not determined - individual screening required"
             })
 

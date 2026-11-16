@@ -94,7 +94,10 @@ def answer_district_question(
             subset=["Program"]
         ).iterrows():
             lines.append(
-                f"- {item['Program']} — {item['Official Website']}"
+                f"- {item['Program']} ({item['Priority']} priority): "
+                f"{item['Official Website']}\n"
+                f"  Why relevant: {item['Why Relevant']}\n"
+                f"  Next step: {item['Screening Guidance']}"
             )
 
         lines.append(

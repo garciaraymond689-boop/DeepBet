@@ -1240,6 +1240,8 @@ if not report_programs.empty:
                 "Priority",
                 "Program",
                 "Agency",
+                "Why Relevant",
+                "Screening Guidance",
                 "Official Website",
                 "Eligibility"
             ]
