@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.streamlit/secrets.toml
+
+# Local development backups
+app_backup_*.py
+app_backup_phase*.py
+district_intelligence_backup_*.py
+*.backup
+*.bak
+.gitignore.backup
+
+# Local credentials and temporary files
+.env.*
+!.env.example
+.streamlit/secrets.toml
+.pytest_cache/
+.DS_Store
