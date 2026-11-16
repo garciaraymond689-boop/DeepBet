@@ -15,7 +15,7 @@ from streamlit_folium import st_folium
 
 st.set_page_config(
     page_title="Project Deep Bet",
-    page_icon="🌺",
+    page_icon="ðŸŒº",
     layout="wide"
 )
 
@@ -87,7 +87,7 @@ internet_data = load_internet()
 
 st.title("Project Deep Bet")
 st.caption("Team Veritas | HAIC 2026")
-st.subheader("Hawaiʻi Legislative District Explorer")
+st.subheader("HawaiÊ»i Legislative District Explorer")
 
 col1, col2, col3 = st.columns(3)
 col1.metric("House Districts", len(districts))
@@ -1223,3 +1223,131 @@ if result is not None:
         "Review only. No changes have been made to "
         "the existing district intelligence datasets."
     )
+
+# === SOURCE INTELLIGENCE PANEL: PHASE 8.3 ===
+st.divider()
+st.header("Source Intelligence")
+st.caption(
+    "Import public-source text, extract numerical claims, "
+    "inspect evidence, and visualize comparable values. "
+    "Extracted claims are not independently verified."
+)
+
+from source_intelligence import extract_source_facts
+from public_source_retrieval import retrieve_public_text
+
+source_mode = st.radio(
+    "Choose source type",
+    ["Paste text", "Public website URL"],
+    horizontal=True,
+    key="source_intelligence_mode"
+)
+
+source_name = st.text_input(
+    "Source title",
+    value="External public source",
+    key="source_intelligence_title"
+)
+
+source_url = ""
+source_text = ""
+
+if source_mode == "Paste text":
+    source_text = st.text_area(
+        "Paste the report, article, or source excerpt",
+        height=180,
+        key="source_intelligence_text"
+    )
+else:
+    source_url = st.text_input(
+        "Public HTTPS URL",
+        placeholder="https://www.census.gov/",
+        key="source_intelligence_url"
+    )
+    st.caption(
+        "Initial supported domains: census.gov, hawaii.gov, congress.gov. "
+        "Some pages may block automated retrieval."
+    )
+
+if st.button("Analyze Source", key="source_intelligence_analyze"):
+    st.session_state.pop("si_results", None)
+    st.session_state.pop("si_source_text", None)
+    st.session_state.pop("si_retrieval", None)
+    try:
+        if source_mode == "Public website URL":
+            if not source_url.strip():
+                raise ValueError("Enter a website URL.")
+
+            with st.spinner("Retrieving public-source text..."):
+                retrieved = retrieve_public_text(source_url)
+
+            source_text = retrieved["text"]
+            source_url = retrieved["url"]
+            st.session_state["si_retrieval"] = retrieved
+        else:
+            st.session_state["si_retrieval"] = None
+
+        results = extract_source_facts(
+            source_text,
+            source_name=source_name,
+            source_url=source_url
+        )
+
+        st.session_state["si_results"] = results
+        st.session_state["si_source_text"] = source_text
+
+    except Exception as exc:
+        st.error(f"Source analysis failed: {exc}")
+
+results = st.session_state.get("si_results")
+
+if results is not None:
+    st.subheader("Extracted Numerical Claims")
+    st.metric("Claims extracted", len(results))
+
+    if results.empty:
+        st.info("No numerical claims found in the supplied text.")
+    else:
+        st.dataframe(
+            results,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        csv_data = results.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download extracted claims CSV",
+            data=csv_data,
+            file_name="deepbet_source_claims.csv",
+            mime="text/csv",
+            key="source_intelligence_download"
+        )
+
+        unit = st.selectbox(
+            "Chart values with the same unit",
+            sorted(results["Unit"].unique().tolist()),
+            key="source_intelligence_unit"
+        )
+
+        chart_data = results[results["Unit"] == unit].copy()
+        chart_data = chart_data.head(20)
+        chart_data["Claim"] = [
+            f"Claim {i + 1}" for i in range(len(chart_data))
+        ]
+
+        if not chart_data.empty:
+            st.bar_chart(
+                chart_data.set_index("Claim")["Value"]
+            )
+            st.caption(
+                "Claims are charted for exploration only. "
+                "Shared units do not establish comparable populations, "
+                "time periods, or definitions."
+            )
+
+    with st.expander("View retrieved or pasted source text"):
+        st.text(
+            st.session_state.get("si_source_text", "")[:15000]
+        )
+
+# === END SOURCE INTELLIGENCE PANEL ===
