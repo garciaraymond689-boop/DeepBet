@@ -1392,14 +1392,16 @@ except Exception as exc:
     st.caption(type(exc).__name__ + ": " + str(exc))
 
 
-# Phase 9: District question interface.
+# Phase 16: Local conversational AI with deterministic fallback.
 from district_questions import answer_district_question
+from local_district_ai import build_context, ask_local_ai
 
 st.divider()
 st.header("District Question Assistant")
 st.caption(
-    "Ask about the selected " + chamber + " district. Answers use existing "
-    "Census-based prototype profiles, not a generative AI model."
+    "Ask questions about the selected district using local AI or "
+    "the original rule-based assistant. Local AI runs through Ollama "
+    "on this computer; no paid API is required."
 )
 
 st.info(
@@ -1407,39 +1409,72 @@ st.info(
     "Change the district in the Intelligence Report selector above."
 )
 
+question_mode = st.radio(
+    "Answer engine",
+    ["Local AI (Qwen2.5 3B)", "Rule-based assistant"],
+    horizontal=True,
+    key="district_question_mode",
+)
+
 st.caption(
-    "Try: What is the median tract income? | "
-    "How severe is housing cost burden? | "
-    "How many households lack internet access? | "
-    "What assistance programs are relevant?"
+    "Try: What is the population? | What percentage are age 65 or older? | "
+    "What does housing cost burden mean here? | "
+    "Which assistance programs may be relevant?"
 )
 
 district_question = st.text_input(
     "Ask a district question",
-    placeholder="What assistance programs are relevant?",
-    key="district_question_input"
+    placeholder="What is the population of this district?",
+    key="district_question_input",
 )
 
 if st.button("Get District Answer", key="district_question_submit"):
     try:
-        district_answer = answer_district_question(
-            district_question,
-            report_district,
-            intelligence_profiles,
-            intelligence_programs,
-            chamber=chamber
-        )
+        district_answer = None
+        engine_used = "Rule-based assistant"
+
+        if question_mode == "Local AI (Qwen2.5 3B)":
+            try:
+                ai_context = build_context(
+                    chamber,
+                    report_district,
+                    report_profile,
+                    demographics if isinstance(
+                        globals().get("demographics"), dict
+                    ) else {},
+                    report_programs,
+                )
+                with st.spinner("Asking the local district AI..."):
+                    district_answer = ask_local_ai(
+                        district_question, ai_context
+                    )
+                engine_used = "Local AI (Qwen2.5 3B)"
+            except Exception as ai_exc:
+                st.warning(
+                    "Local AI unavailable or response did not pass "
+                    "validation. Using the rule-based assistant."
+                )
+                st.caption(type(ai_exc).__name__ + ": " + str(ai_exc))
+
+        if district_answer is None:
+            district_answer = answer_district_question(
+                district_question,
+                report_district,
+                intelligence_profiles,
+                intelligence_programs,
+                chamber=chamber,
+            )
+
         st.session_state["district_question_result"] = {
             "district": report_district,
             "chamber": chamber,
             "question": district_question,
-            "answer": district_answer
+            "answer": district_answer,
+            "engine": engine_used,
         }
     except Exception as exc:
-        st.error(
-            "The question could not be processed. "
-            "Please review the district data and try again."
-        )
+        st.error("The district question could not be processed.")
+        st.caption(type(exc).__name__ + ": " + str(exc))
 
 question_result = st.session_state.get("district_question_result")
 
@@ -1447,11 +1482,16 @@ if question_result:
     if (
         question_result["district"] == report_district
         and question_result.get("chamber") == chamber
+        and question_result.get("question") == district_question
     ):
         st.subheader("District Answer")
+        st.caption(
+            "Answer engine: "
+            + question_result.get("engine", "Rule-based assistant")
+        )
         st.write(question_result["answer"])
     else:
-        st.info("Select Get District Answer to analyze the new district.")
+        st.info("Select Get District Answer to analyze the new question.")
 
 # Phase 6: External CSV inspection interface.
 st.divider()
