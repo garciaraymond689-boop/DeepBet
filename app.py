@@ -814,6 +814,159 @@ if st.session_state.selected_district:
 
 # Phase 5: Independent district intelligence report.
 st.divider()
+
+# PHASE_12_COMPARISON_DASHBOARD
+from district_comparison import compare_districts
+
+st.divider()
+st.header("District Comparison Dashboard")
+
+st.caption(
+    "Compare two Hawaii legislative districts using official 2024 "
+    "ACS five-year estimates and statewide benchmarks."
+)
+
+compare_col_a, compare_col_b = st.columns(2)
+
+with compare_col_a:
+    st.markdown("**District A**")
+    compare_chamber_a = st.selectbox(
+        "Legislative Chamber A",
+        ["House", "Senate"],
+        key="compare_chamber_a",
+    )
+    compare_district_a = st.selectbox(
+        "District Number A",
+        [f"{i:03d}" for i in range(
+            1, 52 if compare_chamber_a == "House" else 26
+        )],
+        key="compare_district_a",
+    )
+
+with compare_col_b:
+    st.markdown("**District B**")
+    compare_chamber_b = st.selectbox(
+        "Legislative Chamber B",
+        ["House", "Senate"],
+        key="compare_chamber_b",
+    )
+    compare_district_b = st.selectbox(
+        "District Number B",
+        [f"{i:03d}" for i in range(
+            1, 52 if compare_chamber_b == "House" else 26
+        )],
+        key="compare_district_b",
+    )
+
+@st.cache_data
+def cached_district_comparison(chamber_a, district_a, chamber_b, district_b):
+    return compare_districts(chamber_a, district_a, chamber_b, district_b)
+
+comparison_result = cached_district_comparison(
+    compare_chamber_a,
+    compare_district_a,
+    compare_chamber_b,
+    compare_district_b,
+)
+
+def format_comparison_value(value, metric):
+    if value is None:
+        return "Unavailable"
+    if metric == "median_household_income":
+        return f"${value:,.0f}"
+    if metric.endswith("_pct"):
+        return f"{value:.1f}%"
+    return f"{value:,.0f}"
+
+def format_comparison_difference(value, metric):
+    if value is None:
+        return "Unavailable"
+    if metric.endswith("_pct"):
+        return f"{value:+.1f} pp"
+    if metric == "median_household_income":
+        return f"{value:+,.0f} USD"
+    return f"{value:+,.0f}"
+
+comparison_table = []
+
+for item in comparison_result["metrics"]:
+    metric = item["metric"]
+    comparison_table.append({
+        "Indicator": item["label"],
+        "District A": (
+            format_comparison_value(item["district_a"], metric)
+        ),
+        "District B": (
+            format_comparison_value(item["district_b"], metric)
+        ),
+        "Hawaii Statewide": (
+            format_comparison_value(item["statewide"], metric)
+        ),
+        "A minus B": (
+            format_comparison_difference(item["a_minus_b"], metric)
+        ),
+        "A minus State": (
+            format_comparison_difference(item["a_minus_state"], metric)
+        ),
+        "B minus State": (
+            format_comparison_difference(item["b_minus_state"], metric)
+        ),
+    })
+
+st.dataframe(
+    pd.DataFrame(comparison_table),
+    use_container_width=True,
+    hide_index=True,
+)
+
+st.caption(
+    "pp = percentage points. Differences are descriptive; "
+    "statistical significance has not been established."
+)
+
+st.subheader("Leading Employment Industries by District")
+
+industry_columns = st.columns(3)
+industry_sets = [
+    (
+        f"{compare_chamber_a} {compare_district_a}",
+        comparison_result["industries_a"],
+    ),
+    (
+        f"{compare_chamber_b} {compare_district_b}",
+        comparison_result["industries_b"],
+    ),
+    (
+        "Hawaii Statewide",
+        comparison_result["industries_statewide"],
+    ),
+]
+
+for column, (heading, industries) in zip(industry_columns, industry_sets):
+    industry_rows = [
+        {
+            "Industry": name,
+            "Share (%)": round(values["percent"], 1),
+        }
+        for name, values in industries.items()
+        if values["percent"] is not None
+    ]
+    industry_rows.sort(
+        key=lambda row: row["Share (%)"],
+        reverse=True,
+    )
+    with column:
+        st.markdown(f"**{heading}**")
+        st.dataframe(
+            pd.DataFrame(industry_rows[:5]),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+with st.expander("Comparison source and limitations"):
+    st.write(comparison_result["source"])
+    st.write(comparison_result["limitations"])
+
 st.header("District Intelligence Report")
 
 intelligence_crosswalk = pd.read_csv(
