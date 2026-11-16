@@ -15,7 +15,7 @@ from streamlit_folium import st_folium
 
 st.set_page_config(
     page_title="Project Deep Bet",
-    page_icon="ðŸŒº",
+    page_icon="Ã°Å¸Å’Âº",
     layout="wide"
 )
 
@@ -87,7 +87,7 @@ internet_data = load_internet()
 
 st.title("Project Deep Bet")
 st.caption("Team Veritas | HAIC 2026")
-st.subheader("HawaiÊ»i Legislative District Explorer")
+st.subheader("Hawaiʻi Legislative District Explorer")
 
 col1, col2, col3 = st.columns(3)
 col1.metric("House Districts", len(districts))
@@ -919,6 +919,62 @@ st.caption(
 )
 
 
+# Phase 9: District question interface.
+from district_questions import answer_district_question
+
+st.divider()
+st.header("District Question Assistant")
+st.caption(
+    "Ask about the selected House district. Answers use existing "
+    "Census-based prototype profiles, not a generative AI model."
+)
+
+st.info(
+    f"Currently analyzing House District {report_district}. "
+    "Change the district in the Intelligence Report selector above."
+)
+
+st.caption(
+    "Try: What is the median tract income? | "
+    "How severe is housing cost burden? | "
+    "How many households lack internet access? | "
+    "What assistance programs are relevant?"
+)
+
+district_question = st.text_input(
+    "Ask a district question",
+    placeholder="What assistance programs are relevant?",
+    key="district_question_input"
+)
+
+if st.button("Get District Answer", key="district_question_submit"):
+    try:
+        district_answer = answer_district_question(
+            district_question,
+            report_district,
+            intelligence_profiles,
+            intelligence_programs
+        )
+        st.session_state["district_question_result"] = {
+            "district": report_district,
+            "question": district_question,
+            "answer": district_answer
+        }
+    except Exception as exc:
+        st.error(
+            "The question could not be processed. "
+            "Please review the district data and try again."
+        )
+
+question_result = st.session_state.get("district_question_result")
+
+if question_result:
+    if question_result["district"] == report_district:
+        st.subheader("District Answer")
+        st.write(question_result["answer"])
+    else:
+        st.info("Select Get District Answer to analyze the new district.")
+
 # Phase 6: External CSV inspection interface.
 st.divider()
 st.header("External Data Importer")
@@ -1351,3 +1407,4 @@ if results is not None:
         )
 
 # === END SOURCE INTELLIGENCE PANEL ===
+
