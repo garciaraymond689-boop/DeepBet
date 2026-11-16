@@ -73,3 +73,34 @@ prototype for understanding community conditions.
 It is not intended for identifying individuals, making individual
 benefit eligibility decisions, or presenting statistical estimates
 as exact household-level facts.
+
+
+## Senate district coverage
+
+The application also supports all 25 Hawaii State Senate districts
+through Senate boundary data and geographic tract alignment.
+
+## Official legislative district demographics
+
+The application uses official 2024 ACS five-year legislative district
+estimates for population, age, poverty, unemployment, industry
+composition, and median household income.
+
+These official district estimates are distinct from the unweighted
+medians calculated from overlapping census tracts.
+
+## Tract-based district summaries
+
+Selected housing, internet, and income indicators are summarized
+using unweighted medians across overlapping tracts.
+
+These are not population-weighted district estimates.
+Area overlap fractions are not population or household weights.
+
+## Local conversational AI
+
+The optional local assistant uses Ollama with qwen2.5:3b.
+It receives selected district facts and performs basic response
+validation. It does not independently verify every generated claim.
+
+The rule-based district question assistant is available separately.
