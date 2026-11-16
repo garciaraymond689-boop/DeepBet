@@ -13,7 +13,8 @@ SOURCE_NOTE = (
 
 
 def answer_district_question(
-    question, district, profiles, programs, chamber="House"
+    question, district, profiles, programs, chamber="House",
+    official_demographics=None
 ):
     """Answer supported questions using existing district data only."""
 
@@ -45,6 +46,25 @@ def answer_district_question(
         return f"{value:.1f}%"
 
     heading = f"{district_label} {district}"
+
+    if re.search(r"\b(population|residents|people|inhabitants)\b", query):
+        if official_demographics is not None:
+            value = pd.to_numeric(
+                official_demographics.get("population"),
+                errors="coerce",
+            )
+            if pd.notna(value):
+                return (
+                    f"{heading}: The official estimated district "
+                    f"population is {int(value):,}.\n\n"
+                    "Source: 2024 U.S. Census Bureau American "
+                    "Community Survey five-year legislative district "
+                    "estimates. This is an estimate, not an exact count."
+                )
+        return (
+            f"{heading}: Official district population data "
+            "is unavailable for this question."
+        )
 
     if re.search(r"\b(income|earnings|salary|wages)\b", query):
         return (

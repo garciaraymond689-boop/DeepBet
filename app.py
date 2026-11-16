@@ -1409,9 +1409,21 @@ st.info(
     "Change the district in the Intelligence Report selector above."
 )
 
+import socket
+
+def local_ollama_available():
+    try:
+        with socket.create_connection(("127.0.0.1", 11434), timeout=0.25):
+            return True
+    except OSError:
+        return False
+
+cloud_deployment = not local_ollama_available()
+
 question_mode = st.radio(
     "Answer engine",
     ["Local AI (Qwen2.5 3B)", "Rule-based assistant"],
+    index=1 if cloud_deployment else 0,
     horizontal=True,
     key="district_question_mode",
 )
@@ -1463,6 +1475,11 @@ if st.button("Get District Answer", key="district_question_submit"):
                 intelligence_profiles,
                 intelligence_programs,
                 chamber=chamber,
+                official_demographics=(
+                    demographics if isinstance(
+                        globals().get("demographics"), dict
+                    ) else None
+                ),
             )
 
         st.session_state["district_question_result"] = {
