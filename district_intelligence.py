@@ -53,16 +53,19 @@ def build_tract_indicators(income, housing, internet):
     return indicators
 
 
-def build_district_profiles(indicators, crosswalk):
-    """Summarize all tracts overlapping each House district."""
+def build_district_profiles(indicators, crosswalk, chamber="House"):
+    """Summarize overlapping tracts for House or Senate districts."""
+    if chamber not in ("House", "Senate"):
+        raise ValueError("Chamber must be House or Senate.")
+    district_column = chamber.lower() + "_district"
 
     links = crosswalk[
-        ["tract_geoid", "house_district"]
+        ["tract_geoid", district_column]
     ].drop_duplicates().copy()
 
     links["tract_geoid"] = links["tract_geoid"].astype(str)
-    links["house_district"] = (
-        links["house_district"].astype(str).str.zfill(3)
+    links[district_column] = (
+        links[district_column].astype(str).str.zfill(3)
     )
 
     tract_rows = indicators.reset_index().merge(
@@ -73,7 +76,7 @@ def build_district_profiles(indicators, crosswalk):
     )
 
     profiles = (
-        tract_rows.groupby("house_district")
+        tract_rows.groupby(district_column)
         .agg(
             tract_count=("GEOID", "nunique"),
             median_income=("median_income", "median"),
@@ -96,8 +99,12 @@ def statewide_benchmarks(indicators):
     }
 
 
-def prioritize_needs(profiles, benchmarks):
-    """Rank potential community needs using statewide tract benchmarks."""
+def prioritize_needs(profiles, benchmarks, chamber="House"):
+    """Rank community needs for the selected legislative chamber."""
+    if chamber not in ("House", "Senate"):
+        raise ValueError("Chamber must be House or Senate.")
+    district_column = chamber.lower() + "_district"
+    district_label = chamber + " District"
 
     categories = [
         ("median_income", "Income and Economic Opportunity", "lower"),
@@ -108,7 +115,7 @@ def prioritize_needs(profiles, benchmarks):
     findings = []
 
     for _, district in profiles.iterrows():
-        district_id = str(district["house_district"]).zfill(3)
+        district_id = str(district[district_column]).zfill(3)
 
         for column, category, direction in categories:
             value = district[column]
@@ -144,7 +151,7 @@ def prioritize_needs(profiles, benchmarks):
                     priority_rank = 3
 
             findings.append({
-                "House District": district_id,
+                district_label: district_id,
                 "Community Need": category,
                 "District Value": value,
                 "Statewide Benchmark": benchmark,
@@ -156,7 +163,7 @@ def prioritize_needs(profiles, benchmarks):
     results = pd.DataFrame(findings)
 
     return results.sort_values(
-        ["House District", "Priority Rank", "Difference (%)"],
+        [district_label, "Priority Rank", "Difference (%)"],
         ascending=[True, True, False],
         na_position="last"
     ).reset_index(drop=True)
@@ -203,8 +210,13 @@ ASSISTANCE_PROGRAMS = [
 ]
 
 
-def match_assistance_programs(priorities, include_baseline=False):
-    """Match community needs to potentially relevant programs."""
+def match_assistance_programs(
+    priorities, include_baseline=False, chamber="House"
+):
+    """Match community needs to programs for either chamber."""
+    if chamber not in ("House", "Senate"):
+        raise ValueError("Chamber must be House or Senate.")
+    district_label = chamber + " District"
 
     matches = []
 
@@ -222,7 +234,7 @@ def match_assistance_programs(priorities, include_baseline=False):
                 continue
 
             matches.append({
-                "House District": finding["House District"],
+                district_label: finding[district_label],
                 "Community Need": finding["Community Need"],
                 "Priority": priority,
                 "Program": program["name"],

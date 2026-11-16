@@ -20,13 +20,16 @@ st.set_page_config(
 )
 
 @st.cache_data
-def load_districts():
-    districts = gpd.read_file(
-        "data/boundaries/hawaii_house_districts.zip"
+def load_districts(chamber):
+    if chamber not in ("House", "Senate"):
+        raise ValueError("Chamber must be House or Senate.")
+    filename = (
+        "data/boundaries/hawaii_"
+        + chamber.lower()
+        + "_districts.zip"
     )
+    districts = gpd.read_file(filename)
     return districts.to_crs("EPSG:4326")
-
-districts = load_districts()
 
 @st.cache_data
 def load_tracts():
@@ -89,8 +92,35 @@ st.title("Project Deep Bet")
 st.caption("Team Veritas | HAIC 2026")
 st.subheader("Hawaiʻi Legislative District Explorer")
 
+chamber = st.radio(
+    "Legislative Chamber",
+    ["House", "Senate"],
+    horizontal=True,
+    key="legislative_chamber"
+)
+
+if st.session_state.get("previous_chamber") != chamber:
+    st.session_state["selected_district"] = None
+    st.session_state["selected_tract"] = None
+    st.session_state.pop("district_question_result", None)
+    st.session_state["zoom_051_oahu"] = False
+    st.session_state["previous_chamber"] = chamber
+
+district_column = (
+    "SLDLST" if chamber == "House" else "SLDUST"
+)
+crosswalk_column = chamber.lower() + "_district"
+district_label = chamber + " District"
+crosswalk_path = (
+    "data/boundaries/tract_"
+    + chamber.lower()
+    + "_crosswalk.csv"
+)
+
+districts = load_districts(chamber)
+
 col1, col2, col3 = st.columns(3)
-col1.metric("House Districts", len(districts))
+col1.metric(chamber + " Districts", len(districts))
 col2.metric("Census Tracts", "461")
 col3.metric("Data Categories", "3")
 
@@ -108,14 +138,14 @@ district_mode = st.radio(
 )
 
 district_numbers = sorted(
-    districts["SLDLST"].astype(str).unique().tolist()
+    districts[district_column].astype(str).unique().tolist()
 )
 
 selected_search_districts = set(district_numbers)
 
 if district_mode == "Single District":
     search_district = st.selectbox(
-        "House District",
+        district_label,
         district_numbers,
         key="search_district_single"
     )
@@ -276,13 +306,13 @@ if minimum_no_internet > 0:
 
 if district_mode != "All Districts":
     search_crosswalk = pd.read_csv(
-        "data/boundaries/tract_house_crosswalk.csv",
-        dtype={"tract_geoid": str, "house_district": str}
+        crosswalk_path,
+        dtype={"tract_geoid": str, crosswalk_column: str}
     )
 
     district_tract_ids = set(
         search_crosswalk.loc[
-            search_crosswalk["house_district"].isin(
+            search_crosswalk[crosswalk_column].isin(
                 selected_search_districts
             ),
             "tract_geoid"
@@ -325,7 +355,7 @@ hawaii_map.get_root().header.add_child(Element("""
 
 folium.GeoJson(
     districts,
-    name="House Districts",
+    name=chamber + " Districts",
     style_function=lambda feature: {
         "fillColor": "#2878B5",
         "color": "#163F66",
@@ -339,8 +369,8 @@ folium.GeoJson(
         "fillOpacity": 0.5
     },
     tooltip=folium.GeoJsonTooltip(
-        fields=["SLDLST"],
-        aliases=["House District:"],
+        fields=[district_column],
+        aliases=[district_label + ":"],
         sticky=True
     )
 ).add_to(hawaii_map)
@@ -348,7 +378,7 @@ folium.GeoJson(
 # Show census tracts overlapping the selected House district.
 if st.session_state.get("selected_district"):
     selected_shape = districts[
-        districts["SLDLST"] == st.session_state.selected_district
+        districts[district_column] == st.session_state.selected_district
     ]
 
     if not selected_shape.empty:
@@ -402,12 +432,13 @@ folium.LayerControl().add_to(hawaii_map)
 # Automatically navigate to districts selected in Search.
 if district_mode != "All Districts":
     search_zoom_shapes = districts[
-        districts["SLDLST"].isin(selected_search_districts)
+        districts[district_column].isin(selected_search_districts)
     ]
 
     if not search_zoom_shapes.empty:
         if (
             district_mode == "Single District"
+            and chamber == "House"
             and search_district == "051"
             and st.session_state.get("zoom_051_oahu", False)
         ):
@@ -434,12 +465,13 @@ if (
     and district_mode == "All Districts"
 ):
     district_shape = districts[
-        districts["SLDLST"] == st.session_state.selected_district
+        districts[district_column] == st.session_state.selected_district
     ]
 
     if not district_shape.empty:
         if (
-            st.session_state.selected_district == "051"
+            chamber == "House"
+            and st.session_state.selected_district == "051"
             and st.session_state.get("zoom_051_oahu", False)
         ):
             hawaii_map.fit_bounds([
@@ -468,11 +500,11 @@ with panel_columns[0]:
 
     if st.session_state.get("selected_district"):
         st.write(
-            "House District:",
+            district_label + ":",
             st.session_state.selected_district
         )
     else:
-        st.write("Select a House district on the map.")
+        st.write("Select a " + chamber + " district on the map.")
 
     if st.session_state.get("selected_tract"):
         st.write(
@@ -593,21 +625,21 @@ if results_ids:
 
     results["Census Tract"] = results.index
 
-    # Map each census tract to every overlapping House district.
+    # Map each census tract to every overlapping district in the selected chamber.
     crosswalk = pd.read_csv(
-        "data/boundaries/tract_house_crosswalk.csv",
+        crosswalk_path,
         dtype={
             "tract_geoid": str,
-            "house_district": str
+            crosswalk_column: str
         }
     )
 
     tract_districts = (
-        crosswalk.groupby("tract_geoid")["house_district"]
+        crosswalk.groupby("tract_geoid")[crosswalk_column]
         .apply(lambda values: ", ".join(sorted(set(values))))
     )
 
-    results["House District(s)"] = (
+    results[chamber + " District(s)"] = (
         results.index.map(tract_districts).fillna("Unknown")
     )
 
@@ -670,10 +702,10 @@ if results_ids:
 
     # District-level summary of matching census tracts.
     st.divider()
-    st.subheader("House District Summary")
+    st.subheader(chamber + " District Summary")
 
     summary_rows = results.merge(
-        crosswalk[["tract_geoid", "house_district"]].drop_duplicates(),
+        crosswalk[["tract_geoid", crosswalk_column]].drop_duplicates(),
         left_on="Census Tract",
         right_on="tract_geoid",
         how="inner"
@@ -682,12 +714,12 @@ if results_ids:
     # Keep the summary focused on the districts selected in Search.
     if district_mode != "All Districts":
         summary_rows = summary_rows[
-            summary_rows["house_district"].isin(selected_search_districts)
+            summary_rows[crosswalk_column].isin(selected_search_districts)
         ]
 
     if not summary_rows.empty:
         district_summary = (
-            summary_rows.groupby("house_district")
+            summary_rows.groupby(crosswalk_column)
             .agg(
                 Matching_Tracts=("Census Tract", "nunique"),
                 Median_Tract_Income=("Median Household Income", "median"),
@@ -696,17 +728,17 @@ if results_ids:
             )
             .reset_index()
             .rename(columns={
-                "house_district": "House District",
+                crosswalk_column: district_label,
                 "Matching_Tracts": "Matching Tracts",
                 "Median_Tract_Income": "Median Tract Income",
                 "Median_Tract_Renter_Burden": "Median Tract Renter Burden (%)",
                 "Median_Tract_No_Internet": "Median Tract Without Internet (%)"
             })
-            .sort_values("House District")
+            .sort_values(district_label)
         )
 
         st.caption(
-            "Summaries reflect matching census tracts overlapping each House "
+            "Summaries reflect matching census tracts overlapping each " + chamber + " "
             "district. Median values are calculated across tracts, not residents. "
             "A tract may appear in multiple districts."
         )
@@ -735,7 +767,7 @@ else:
 # Identify the legislative district selected on the map.
 if map_data and map_data.get("last_active_drawing"):
     selected = map_data["last_active_drawing"]
-    district_id = selected.get("properties", {}).get("SLDLST")
+    district_id = selected.get("properties", {}).get(district_column)
 
     if district_id:
         if district_id != st.session_state.selected_district:
@@ -763,10 +795,10 @@ if st.session_state.get("selected_tract"):
 # Always display the currently selected district.
 if st.session_state.selected_district:
     st.success(
-        f"Selected House District: {st.session_state.selected_district}"
+        f"Selected {district_label}: {st.session_state.selected_district}"
     )
 
-    if st.session_state.selected_district == "051":
+    if chamber == "House" and st.session_state.selected_district == "051":
         if st.button("Zoom to Oahu"):
             st.session_state.zoom_051_oahu = True
             st.rerun()
@@ -785,10 +817,10 @@ st.divider()
 st.header("District Intelligence Report")
 
 intelligence_crosswalk = pd.read_csv(
-    "data/boundaries/tract_house_crosswalk.csv",
+    crosswalk_path,
     dtype={
         "tract_geoid": str,
-        "house_district": str
+        crosswalk_column: str
     }
 )
 
@@ -800,7 +832,8 @@ intelligence_indicators = build_tract_indicators(
 
 intelligence_profiles, intelligence_tracts = build_district_profiles(
     intelligence_indicators,
-    intelligence_crosswalk
+    intelligence_crosswalk,
+    chamber=chamber
 )
 
 intelligence_benchmarks = statewide_benchmarks(
@@ -809,24 +842,26 @@ intelligence_benchmarks = statewide_benchmarks(
 
 intelligence_priorities = prioritize_needs(
     intelligence_profiles,
-    intelligence_benchmarks
+    intelligence_benchmarks,
+    chamber=chamber
 )
 
 intelligence_programs = match_assistance_programs(
-    intelligence_priorities
+    intelligence_priorities,
+    chamber=chamber
 )
 
 report_district = st.selectbox(
-    "Select House District for Intelligence Report",
-    sorted(intelligence_profiles["house_district"].unique()),
-    key="intelligence_district"
+    "Select " + district_label + " for Intelligence Report",
+    sorted(intelligence_profiles[crosswalk_column].unique()),
+    key="intelligence_district_" + chamber.lower()
 )
 
 report_profile = intelligence_profiles[
-    intelligence_profiles["house_district"] == report_district
+    intelligence_profiles[crosswalk_column] == report_district
 ].iloc[0]
 
-st.subheader(f"House District {report_district}")
+st.subheader(f"{district_label} {report_district}")
 
 metric1, metric2, metric3, metric4 = st.columns(4)
 
@@ -858,7 +893,7 @@ st.caption(
 st.subheader("Community Needs Assessment")
 
 report_priorities = intelligence_priorities[
-    intelligence_priorities["House District"] == report_district
+    intelligence_priorities[district_label] == report_district
 ].copy()
 
 st.dataframe(
@@ -883,7 +918,7 @@ st.caption(
 st.subheader("Potential Assistance Programs")
 
 report_programs = intelligence_programs[
-    intelligence_programs["House District"] == report_district
+    intelligence_programs[district_label] == report_district
 ].copy()
 
 if not report_programs.empty:
@@ -925,12 +960,12 @@ from district_questions import answer_district_question
 st.divider()
 st.header("District Question Assistant")
 st.caption(
-    "Ask about the selected House district. Answers use existing "
+    "Ask about the selected " + chamber + " district. Answers use existing "
     "Census-based prototype profiles, not a generative AI model."
 )
 
 st.info(
-    f"Currently analyzing House District {report_district}. "
+    f"Currently analyzing {district_label} {report_district}. "
     "Change the district in the Intelligence Report selector above."
 )
 
@@ -953,10 +988,12 @@ if st.button("Get District Answer", key="district_question_submit"):
             district_question,
             report_district,
             intelligence_profiles,
-            intelligence_programs
+            intelligence_programs,
+            chamber=chamber
         )
         st.session_state["district_question_result"] = {
             "district": report_district,
+            "chamber": chamber,
             "question": district_question,
             "answer": district_answer
         }
@@ -969,7 +1006,10 @@ if st.button("Get District Answer", key="district_question_submit"):
 question_result = st.session_state.get("district_question_result")
 
 if question_result:
-    if question_result["district"] == report_district:
+    if (
+        question_result["district"] == report_district
+        and question_result.get("chamber") == chamber
+    ):
         st.subheader("District Answer")
         st.write(question_result["answer"])
     else:
@@ -1034,7 +1074,7 @@ if uploaded_csv is not None:
         import pandas as pd
 
         reference_crosswalk = pd.read_csv(
-            "data/boundaries/tract_house_crosswalk.csv",
+            crosswalk_path,
             dtype=str
         )
 
@@ -1045,7 +1085,7 @@ if uploaded_csv is not None:
         )
 
         reference_districts = (
-            reference_crosswalk["house_district"]
+            reference_crosswalk[crosswalk_column]
             .dropna()
             .unique()
         )

@@ -1,20 +1,26 @@
-﻿import re
+import re
 import pandas as pd
 
 
 SOURCE_NOTE = (
     "Source: 2024 U.S. Census Bureau American Community Survey "
     "tract-level data, summarized using the project's "
-    "tract-to-House-district crosswalk. District figures are "
+    "tract-to-legislative-district crosswalk. District figures are "
     "unweighted medians across overlapping tracts, not official "
     "district-level population estimates. Margins of error are "
     "not included."
 )
 
 
-def answer_district_question(question, district, profiles, programs):
+def answer_district_question(
+    question, district, profiles, programs, chamber="House"
+):
     """Answer supported questions using existing district data only."""
 
+    if chamber not in ("House", "Senate"):
+        raise ValueError("Chamber must be House or Senate.")
+    district_column = chamber.lower() + "_district"
+    district_label = chamber + " District"
     query = (question or "").strip().lower()
     district = str(district).zfill(3)
 
@@ -22,11 +28,11 @@ def answer_district_question(question, district, profiles, programs):
         return "Enter a question about income, housing, internet access, or assistance programs."
 
     row = profiles.loc[
-        profiles["house_district"].astype(str).str.zfill(3) == district
+        profiles[district_column].astype(str).str.zfill(3) == district
     ]
 
     if row.empty:
-        return f"No district profile is available for House District {district}."
+        return f"No district profile is available for {district_label} {district}."
 
     profile = row.iloc[0]
 
@@ -38,7 +44,7 @@ def answer_district_question(question, district, profiles, programs):
             return f"${value:,.0f}"
         return f"{value:.1f}%"
 
-    heading = f"House District {district}"
+    heading = f"{district_label} {district}"
 
     if re.search(r"\b(income|earnings|salary|wages)\b", query):
         return (
@@ -69,7 +75,7 @@ def answer_district_question(question, district, profiles, programs):
 
     if re.search(r"\b(program|benefit|assistance|help|support)\w*", query):
         district_programs = programs.loc[
-            programs["House District"].astype(str).str.zfill(3)
+            programs[district_label].astype(str).str.zfill(3)
             == district
         ]
 
