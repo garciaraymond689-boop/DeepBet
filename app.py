@@ -387,21 +387,6 @@ if st.session_state.get("selected_district"):
             tracts.geometry.intersects(selected_geometry)
         ]
 
-        if not matching_tracts.empty:
-            folium.GeoJson(
-                matching_tracts,
-                name="Census Tracts",
-                style_function=lambda feature: {
-                    "fillColor": "#FFFFFF",
-                    "color": "#E85D04",
-                    "weight": 1.5,
-                    "fillOpacity": 0.05
-                },
-                tooltip=folium.GeoJsonTooltip(
-                    fields=["GEOID", "NAME"],
-                    aliases=["Tract GEOID:", "Census Tract:"]
-                )
-            ).add_to(hawaii_map)
 
 
 # Highlight census tracts matching the district and income filters.
@@ -411,21 +396,6 @@ if minimum_income <= maximum_income and matching_income_tracts:
         tracts["GEOID"].astype(str).isin(matching_income_tracts)
     ]
 
-    if not highlighted_tracts.empty:
-        folium.GeoJson(
-            highlighted_tracts,
-            name="Income Search Matches",
-            style_function=lambda feature: {
-                "fillColor": "#22C55E",
-                "color": "#15803D",
-                "weight": 2,
-                "fillOpacity": 0.45
-            },
-            tooltip=folium.GeoJsonTooltip(
-                fields=["GEOID", "NAME"],
-                aliases=["Tract GEOID:", "Census Tract:"]
-            )
-        ).add_to(hawaii_map)
 
 folium.LayerControl().add_to(hawaii_map)
 
@@ -484,11 +454,21 @@ if (
 
 # Display the map beside the district information panel.
 # Full-width interactive map.
+# Recreate the map component when its target viewport changes.
+# This prevents the browser from retaining the previous map position.
+map_view_key = (
+    f"district_map_{chamber}_{district_mode}_"
+    f"{','.join(sorted(str(d) for d in selected_search_districts))}_"
+    f"{st.session_state.get('selected_district')}_"
+    f"{st.session_state.get('zoom_051_oahu', False)}"
+)
+
 map_data = st_folium(
     hawaii_map,
     width=None,
     height=550,
-    returned_objects=["last_active_drawing", "last_clicked"]
+    returned_objects=["last_active_drawing", "last_clicked"],
+    key=map_view_key
 )
 
 # Four information panels below the map.
