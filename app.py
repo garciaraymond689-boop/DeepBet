@@ -890,6 +890,164 @@ st.caption(
     "tracts. They are not population-weighted district estimates."
 )
 
+
+# OFFICIAL_DISTRICT_DEMOGRAPHICS_PHASE_11_12
+from demographic_engine import calculate_demographics
+
+@st.cache_data
+def load_official_district_demographics():
+    frame = pd.read_csv(
+        "data/demographics/hawaii_legislative_districts_acs2024.csv",
+        dtype=str,
+    )
+    return frame.set_index(["chamber", "district"], verify_integrity=True)
+
+st.subheader("Official District Demographics")
+
+official_data = load_official_district_demographics()
+official_key = (chamber, str(report_district).zfill(3))
+
+if official_key not in official_data.index:
+    st.warning("Official demographic estimates unavailable for this district.")
+else:
+    official_row = official_data.loc[official_key]
+
+    def official_estimate(table, number):
+        raw = official_row.get(f"{table}_E{number:03d}")
+        try:
+            value = int(raw)
+            return value if value >= 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    def official_moe(table, number):
+        raw = official_row.get(f"{table}_M{number:03d}")
+        try:
+            value = int(raw)
+            return value if value >= 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    translated = {}
+    for field, raw in official_row.items():
+        if "_E" in field:
+            table, number = field.split("_E", 1)
+            if table in ("B01001", "B17001", "B23025", "C24030"):
+                translated[f"{table}_{number}E"] = raw
+
+    demographics = calculate_demographics(translated)
+
+    def display_number(value):
+        return f"{value:,.0f}" if value is not None else "Unavailable"
+
+    def display_percent(value):
+        return f"{value:.1f}%" if value is not None else "Unavailable"
+
+    def display_moe(table, number):
+        value = official_moe(table, number)
+        return (
+            f"ACS margin of error: +/- {value:,.0f}"
+            if value is not None
+            else "ACS margin of error: unavailable"
+        )
+
+    demographic_columns = st.columns(4)
+
+    demographic_columns[0].metric(
+        "District Population",
+        display_number(demographics["population"]),
+        help=display_moe("B01001", 1),
+    )
+    demographic_columns[1].metric(
+        "Children Under 18",
+        display_percent(demographics["children_under_18_pct"]),
+    )
+    demographic_columns[2].metric(
+        "Residents Age 65+",
+        display_percent(demographics["kupuna_65_plus_pct"]),
+    )
+    demographic_columns[3].metric(
+        "Median Household Income",
+        (
+            "$" + display_number(official_estimate("B19013", 1))
+            if official_estimate("B19013", 1) is not None
+            else "Unavailable"
+        ),
+        help=display_moe("B19013", 1),
+    )
+
+    demographic_columns_2 = st.columns(3)
+    demographic_columns_2[0].metric(
+        "Poverty Rate",
+        display_percent(demographics["poverty_rate_pct"]),
+    )
+    demographic_columns_2[1].metric(
+        "Civilian Unemployment Rate",
+        display_percent(demographics["unemployment_rate_pct"]),
+    )
+    demographic_columns_2[2].metric(
+        "Civilian Employed Population",
+        display_number(demographics["industry_employed_total"]),
+        help=display_moe("C24030", 1),
+    )
+
+    industry_rows = [
+        {
+            "Industry": name,
+            "Employed Residents": int(values["count"]),
+            "Share of Employed Residents": round(values["percent"], 1),
+        }
+        for name, values in demographics["industries"].items()
+        if values["count"] is not None and values["percent"] is not None
+    ]
+    industry_rows.sort(
+        key=lambda item: item["Employed Residents"],
+        reverse=True,
+    )
+
+    st.markdown("**Leading Employment Industries**")
+    st.dataframe(
+        pd.DataFrame(industry_rows[:5]),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    with st.expander("ACS source details and uncertainty"):
+        st.write(
+            "Source: U.S. Census Bureau, 2024 American Community Survey "
+            "5-year estimates, direct state legislative district tables."
+        )
+        st.write(
+            "Tables: B01001 (age), B17001 (poverty), "
+            "B23025 (employment), C24030 (industries), "
+            "B19013 (median household income)."
+        )
+        st.write(
+            "Age, poverty, unemployment, and industry percentages are "
+            "calculated from published estimates. Margins of error for "
+            "these derived percentages are not yet calculated."
+        )
+        st.write(
+            "Population margin of error: "
+            + display_moe("B01001", 1)
+        )
+        st.write(
+            "Median income margin of error: "
+            + display_moe("B19013", 1)
+        )
+        st.write(
+            "A Census suppression or unavailable-value code is "
+            "not interpreted as a numerical margin of error."
+        )
+
+    st.caption(
+        "Official district-level ACS estimates, 2024 five-year period. "
+        "These are distinct from the unweighted overlapping-tract "
+        "medians displayed above. Estimates are subject to sampling "
+        "uncertainty; calculated percentage margins of error are "
+        "not shown."
+    )
+
 st.subheader("Community Needs Assessment")
 
 report_priorities = intelligence_priorities[
