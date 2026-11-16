@@ -1357,6 +1357,41 @@ st.caption(
 )
 
 
+
+# PHASE_15_DISTRICT_PDF_DOWNLOAD
+from district_report import generate_district_pdf
+
+try:
+    selected_official_row = (
+        official_data.loc[official_key]
+        if official_key in official_data.index
+        else None
+    )
+
+    district_pdf = generate_district_pdf(
+        chamber=chamber,
+        district=report_district,
+        profile=report_profile,
+        official_row=selected_official_row,
+        priorities=report_priorities,
+        programs=report_programs,
+    )
+
+    st.download_button(
+        "Download District Profile (PDF)",
+        data=district_pdf,
+        file_name=(
+            "deep_bet_" + chamber.lower() + "_district_"
+            + str(report_district).zfill(3) + ".pdf"
+        ),
+        mime="application/pdf",
+        key="district_pdf_" + chamber.lower(),
+    )
+except Exception as exc:
+    st.error("District PDF could not be generated.")
+    st.caption(type(exc).__name__ + ": " + str(exc))
+
+
 # Phase 9: District question interface.
 from district_questions import answer_district_question
 
