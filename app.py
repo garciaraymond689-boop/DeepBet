@@ -471,129 +471,112 @@ map_data = st_folium(
     key=map_view_key
 )
 
-# Four information panels below the map.
-selected_tract = st.session_state.get("selected_tract")
+# Four district snapshot panels below the map.
+# Use all overlapping tracts, independent of search filters.
+snapshot_district = st.session_state.get("selected_district")
+snapshot_tract_ids = []
+
+if snapshot_district:
+    snapshot_shape = districts[
+        districts[district_column].astype(str) == str(snapshot_district)
+    ]
+    if not snapshot_shape.empty:
+        snapshot_geometry = snapshot_shape.geometry.union_all()
+        snapshot_tract_ids = (
+            tracts.loc[
+                tracts.geometry.intersects(snapshot_geometry),
+                "GEOID"
+            ]
+            .astype(str)
+            .drop_duplicates()
+            .tolist()
+        )
+
+def snapshot_median(series):
+    if not snapshot_tract_ids:
+        return None
+    values = pd.to_numeric(
+        series.reindex(snapshot_tract_ids),
+        errors="coerce"
+    )
+    values = values.where(values >= 0).dropna()
+    if values.empty:
+        return None
+    return float(values.median())
+
+snapshot_income = snapshot_median(
+    income_data["B19013_001E"]
+)
+snapshot_renter = snapshot_median(renter_burden_percent)
+snapshot_internet = snapshot_median(internet_without_pct)
+
 panel_columns = st.columns(4, gap="small")
 
 with panel_columns[0]:
     st.subheader("District Information")
-
-    if st.session_state.get("selected_district"):
-        st.write(
-            district_label + ":",
-            st.session_state.selected_district
-        )
+    if snapshot_district:
+        st.write(district_label + ":", snapshot_district)
+        st.metric("Overlapping Census Tracts", len(snapshot_tract_ids))
     else:
         st.write("Select a " + chamber + " district on the map.")
 
-    if st.session_state.get("selected_tract"):
-        st.write(
-            "Census Tract:",
-            st.session_state.selected_tract
-        )
-    else:
-        st.write("Select a census tract to see its details.")
-
 with panel_columns[1]:
     st.subheader("Median Household Income")
-
-    selected_tract = st.session_state.get("selected_tract")
-
-    if selected_tract and selected_tract in income_data.index:
-        value = pd.to_numeric(
-            income_data.loc[selected_tract, "B19013_001E"],
-            errors="coerce"
-        )
-
-        if pd.notna(value) and value >= 0:
-            st.metric("Annual Median Income", f"${value:,.0f}")
-        else:
-            st.write("Income estimate unavailable.")
+    if snapshot_income is not None:
+        st.metric("Median Tract Income", f"${snapshot_income:,.0f}")
+    elif snapshot_district:
+        st.write("Income estimate unavailable.")
     else:
-        st.write("Select a census tract to view income.")
-
-    st.caption("Source: U.S. Census ACS 2024, 5-year estimates.")
+        st.write("Select a district to view income.")
+    st.caption(
+        "Unweighted median of overlapping tract household-income "
+        "estimates; not an official district income estimate."
+    )
 
 with panel_columns[2]:
     st.subheader("Renter Housing Affordability")
-
-    if selected_tract and selected_tract in renter_housing_data.index:
-        row = renter_housing_data.loc[selected_tract]
-
-        def census_number(column):
-            return pd.to_numeric(row[column], errors="coerce")
-
-        total = census_number("B25070_001E")
-        not_computed = census_number("B25070_011E")
-        burden_values = [
-            census_number(f"B25070_{i:03d}E")
-            for i in range(7, 11)
-        ]
-
-        if (
-            pd.notna(total)
-            and pd.notna(not_computed)
-            and all(pd.notna(v) and v >= 0 for v in burden_values)
-            and total >= 0
-            and not_computed >= 0
-            and total > not_computed
-        ):
-            burdened = sum(burden_values)
-            eligible = total - not_computed
-            percentage = burdened / eligible * 100
-
-            st.metric("Renters Cost-Burdened", f"{percentage:.1f}%")
-            st.caption(
-                "Share of renter households spending at least "
-                "30% of income on rent and utilities."
-            )
-        else:
-            st.write("Housing affordability estimate unavailable.")
+    if snapshot_renter is not None:
+        st.metric(
+            "Median Tract Renter Cost Burden",
+            f"{snapshot_renter:.1f}%"
+        )
+    elif snapshot_district:
+        st.write("Housing affordability estimate unavailable.")
     else:
-        st.write("Select a census tract to view housing affordability.")
+        st.write("Select a district to view housing affordability.")
+    st.caption(
+        "Unweighted median of overlapping tract percentages. "
+        "Cost-burdened renter households spend at least 30% "
+        "of income on rent and utilities."
+    )
 
 with panel_columns[3]:
     st.subheader("Internet Access")
-
-    if selected_tract and selected_tract in internet_data.index:
-        internet_row = internet_data.loc[selected_tract]
-
-        total_households = pd.to_numeric(
-            internet_row["B28002_001E"], errors="coerce"
+    if snapshot_internet is not None:
+        st.metric(
+            "Median Tract Without Internet",
+            f"{snapshot_internet:.1f}%"
         )
-        no_internet = pd.to_numeric(
-            internet_row["B28002_013E"], errors="coerce"
-        )
-
-        if (
-            pd.notna(total_households)
-            and pd.notna(no_internet)
-            and total_households > 0
-            and 0 <= no_internet <= total_households
-        ):
-            no_internet_pct = no_internet / total_households * 100
-
-            st.metric(
-                "Households Without Internet Access",
-                f"{no_internet_pct:.1f}%"
-            )
-            st.caption(
-                "Source: U.S. Census ACS 2024, 5-year estimates."
-            )
-        else:
-            st.write("Internet access estimate unavailable.")
+    elif snapshot_district:
+        st.write("Internet access estimate unavailable.")
     else:
-        st.write("Select a census tract to view internet access.")
+        st.write("Select a district to view internet access.")
+    st.caption(
+        "Unweighted median of overlapping tract percentages "
+        "of households without internet access."
+    )
 
-
-
+st.caption(
+    "Snapshot source: U.S. Census Bureau, 2024 ACS 5-year "
+    "tract estimates. Tracts can overlap multiple districts."
+)
 
 st.caption(
     "2025 U.S. Census TIGER/Line boundaries | "
     "Hover over a district to see its number."
 )
 
-
+st.divider()
 # Search results table.
 st.divider()
 st.subheader("Matching Census Tracts")
